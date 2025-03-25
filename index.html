@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixelPlace</title>
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+        import { getDatabase, ref, set, onValue, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDn5odm1PQYXKC9tk_ad_3sPddQf9cEEmY",
+            authDomain: "pixel-place-1.firebaseapp.com",
+            databaseURL: "https://pixel-place-1-default-rtdb.firebaseio.com",
+            projectId: "pixel-place-1",
+            storageBucket: "pixel-place-1.firebasestorage.app",
+            messagingSenderId: "48366213367",
+            appId: "1:48366213367:web:0a8bab14f054ddcf6a5bf2",
+            measurementId: "G-KFPY6HFNDK"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+        const auth = getAuth(app);
+        
+        // DOM elements
+        const canvas = document.getElementById('pixelCanvas');
+        const ctx = canvas.getContext('2d');
+        const colorPicker = document.getElementById('colorPicker');
+        const signInButton = document.getElementById('signInButton');
+        const clearButton = document.getElementById('clearButton');
+        const userInfo = document.getElementById('userInfo');
+        const status = document.getElementById('status');
+        
+        // App state
+        let currentColor = '#FF0000';
+        const pixelSize = 10;
+        const gridSize = 50;
+        let isDrawing = false;
+        let userId = null;
+
+        // Available colors
+        const colors = [
+            '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', 
+            '#00FFFF', '#000000', '#FFFFFF', '#C0C0C0', '#808080',
+            '#800000', '#808000', '#008000', '#800080', '#008080', '#000080'
+        ];
+
+        // Initialize color picker
+        function initColorPicker() {
+            colorPicker.innerHTML = '';
+            colors.forEach(color => {
+                const colorDiv = document.createElement('div');
+                colorDiv.className = 'color';
+                colorDiv.style.backgroundColor = color;
+                if (color === currentColor) {
+                    colorDiv.classList.add('selected');
+                }
+                colorDiv.addEventListener('click', () => {
+                    document.querySelector('.color.selected')?.classList.remove('selected');
+                    colorDiv.classList.add('selected');
+                    currentColor = color;
+                });
+                colorPicker.appendChild(colorDiv);
+            });
+        }
+
+        // Draw grid lines
+        function drawGrid() {
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 0.5;
+            
+            for (let x = 0; x <= canvas.width; x += pixelSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            for (let y = 0; y <= canvas.height; y += pixelSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        // Draw all pixels from Firebase
+        function drawPixels(pixels) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            
+            if (pixels) {
+                Object.keys(pixels).forEach(key => {
+                    const [x, y] = key.split('_').map(Number);
+                    const color = pixels[key];
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                });
+            }
+        }
+
+        // Handle placing a pixel
+        function placePixel(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / pixelSize);
+            const y = Math.floor((e.clientY - rect.top) / pixelSize);
+            
+            if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+                const pixelRef = ref(database, `pixels/${x}_${y}`);
+                set(pixelRef, currentColor).catch(error => {
+                    console.error("Error placing pixel:", error);
+                    status.textContent = "Error placing pixel. Try again.";
+                });
+            }
+        }
+
+        // Initialize canvas event listeners
+        function initCanvas() {
+            canvas.addEventListener('mousedown', (e) => {
+                if (!userId) {
+                    status.textContent = "Please sign in to draw.";
+                    return;
+                }
+                isDrawing = true;
+                placePixel(e);
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (!userId || !isDrawing) return;
+                placePixel(e);
+            });
+
+            canvas.addEventListener('mouseup', () => {
+                isDrawing = false;
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                isDrawing = false;
+            });
+        }
+
+        // Initialize authentication
+        function initAuth() {
+            signInButton.addEventListener('click', async () => {
+                const provider = new GoogleAuthProvider();
+                provider.setCustomParameters({
+                    prompt: 'select_account'
+                });
+                
+                try {
+                    await signInWithPopup(auth, provider);
+                } catch (error) {
+                    console.error("Sign in error:", error);
+                    
+                    if (error.code === 'auth/popup-closed-by-user') {
+                        status.textContent = 'Sign-in window was closed too soon.';
+                    } else if (error.code === 'auth/cancelled-popup-request') {
+                        status.textContent = 'Only one sign-in attempt allowed at a time.';
+                    } else {
+                        status.textContent = `Sign-in error: ${error.message}`;
+                    }
+                }
+            });
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    userInfo.innerHTML = `
+                        <p>Welcome, ${user.displayName || 'User'}!</p>
+                        ${user.photoURL ? `<img src="${user.photoURL}" width="40" style="border-radius: 50%;">` : ''}
+                        <button id="signOutButton">Sign Out</button>
+                    `;
+                    signInButton.style.display = 'none';
+                    
+                    document.getElementById('signOutButton').addEventListener('click', () => {
+                        signOut(auth).catch(error => {
+                            console.error("Sign out error:", error);
+                        });
+                    });
+                    
+                    status.textContent = 'Connected. Start drawing!';
+                } else {
+                    userId = null;
+                    userInfo.innerHTML = '';
+                    signInButton.style.display = 'inline-block';
+                    status.textContent = 'Please sign in to draw.';
+                }
+            });
+        }
+
+        // Initialize clear button
+        function initClearButton() {
+            clearButton.addEventListener('click', () => {
+                if (confirm('Are you sure you want to clear the canvas?')) {
+                    remove(ref(database, 'pixels')).catch(error => {
+                        console.error("Error clearing canvas:", error);
+                        status.textContent = "Error clearing canvas. Try again.";
+                    });
+                }
+            });
+        }
+
+        // Main initialization
+        function init() {
+            initColorPicker();
+            initCanvas();
+            initAuth();
+            initClearButton();
+            
+            drawGrid();
+            status.textContent = 'Connecting...';
+            
+            // Listen for pixel changes
+            const pixelsRef = ref(database, 'pixels');
+            onValue(pixelsRef, (snapshot) => {
+                const pixels = snapshot.val();
+                drawPixels(pixels);
+                
+                if (status.textContent.includes('Connecting')) {
+                    status.textContent = userId ? 'Connected. Start drawing!' : 'Please sign in to draw.';
+                }
+            }, (error) => {
+                console.error("Database error:", error);
+                status.textContent = "Connection error. Refresh the page.";
+            });
+        }
+
+        // Start the app
+        init();
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        #container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        #canvasContainer {
+            text-align: center;
+            margin: 20px 0;
+        }
+        canvas {
+            border: 1px solid #ddd;
+            background-color: white;
+            cursor: crosshair;
+        }
+        #controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        #colorPicker {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .color {
+            width: 30px;
+            height: 30px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .color.selected {
+            border-color: #333;
+        }
+        #authSection {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #3367d6;
+        }
+        #status {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>PixelPlace</h1>
+        
+        <div id="authSection">
+            <button id="signInButton">Sign in with Google</button>
+            <div id="userInfo"></div>
+        </div>
+        
+        <div id="controls">
+            <div id="colorPicker">
+                <!-- Colors will be added by JavaScript -->
+            </div>
+            <div>
+                <button id="clearButton">Clear Canvas</button>
+            </div>
+        </div>
+        
+        <div id="canvasContainer">
+            <canvas id="pixelCanvas" width="500" height="500"></canvas>
+        </div>
+        
+        <div id="status">Loading...</div>
+    </div>
+</body>
+</html>
