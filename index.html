@@ -3,21 +3,110 @@
 <head>
     <title>Pixel Place</title>
     <style>
-        body { margin: 0; overflow: hidden; }
-        #container { position: relative; width: 100vw; height: 100vh; }
-        #canvas { position: absolute; background: #eee; }
-        #toolbar {
-            position: fixed; bottom: 0; left: 0; right: 0;
-            height: 100px; background: #333; padding: 10px;
-            display: flex; align-items: center;
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: Arial, sans-serif;
         }
-        #color-preview { width: 50px; height: 50px; border: 2px solid white; margin-right: 15px; }
-        .slider { margin: 0 10px; width: 100px; }
-        .value { color: white; width: 30px; text-align: center; }
-        #zoom-controls { position: fixed; top: 10px; right: 10px; background: rgba(255,255,255,0.7); padding: 5px; }
+        #container { 
+            position: relative; 
+            width: 100vw; 
+            height: 100vh; 
+            background-color: #f0f0f0;
+        }
+        #canvas { 
+            position: absolute; 
+            background: white;
+            image-rendering: pixelated;
+        }
+        #toolbar {
+            position: fixed; 
+            bottom: 0; 
+            left: 0; 
+            right: 0;
+            height: 120px; 
+            background: #333; 
+            padding: 10px;
+            display: flex; 
+            align-items: center;
+            box-sizing: border-box;
+        }
+        #color-preview { 
+            width: 60px; 
+            height: 60px; 
+            border: 2px solid white; 
+            margin-right: 15px; 
+            border-radius: 5px;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            margin-right: 15px;
+            color: white;
+        }
+        .slider { 
+            width: 100px; 
+            margin: 0 10px;
+        }
+        .value { 
+            color: white; 
+            width: 30px; 
+            text-align: center; 
+        }
+        #zoom-controls { 
+            position: fixed; 
+            top: 10px; 
+            right: 10px; 
+            background: rgba(255,255,255,0.8); 
+            padding: 5px 10px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #auth-container {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        button {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            background: #4285f4;
+            color: white;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        #user-info {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            color: #333;
+        }
+        #user-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+        }
     </style>
 </head>
 <body>
+    <div id="auth-container">
+        <button id="sign-in">Sign In with Google</button>
+        <div id="user-info">
+            <img id="user-avatar" src="" alt="User">
+            <span id="username"></span>
+            <button id="sign-out">Sign Out</button>
+        </div>
+    </div>
+    
     <div id="container">
         <canvas id="canvas"></canvas>
         <div id="zoom-controls">
@@ -29,22 +118,26 @@
     
     <div id="toolbar">
         <div id="color-preview"></div>
-        <div>
+        
+        <div class="slider-container">
             <span style="color:red">R</span>
             <input type="range" class="slider" id="red" min="0" max="255" value="0">
             <span class="value" id="red-value">0</span>
         </div>
-        <div>
+        
+        <div class="slider-container">
             <span style="color:green">G</span>
             <input type="range" class="slider" id="green" min="0" max="255" value="0">
             <span class="value" id="green-value">0</span>
         </div>
-        <div>
+        
+        <div class="slider-container">
             <span style="color:blue">B</span>
             <input type="range" class="slider" id="blue" min="0" max="255" value="0">
             <span class="value" id="blue-value">0</span>
         </div>
-        <div id="hex" style="color:white; margin-left:15px;">#000000</div>
+        
+        <div id="hex" style="color:white; margin-left:15px; font-family: monospace;">#000000</div>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
@@ -73,8 +166,10 @@
         const ctx = canvas.getContext('2d');
         const container = document.getElementById('container');
         
-        const GRID_SIZE = 10000;
-        const BASE_PIXEL_SIZE = 10;
+        // Grid configuration
+        const GRID_SIZE = 100;
+        const BASE_PIXEL_SIZE = 30;
+        const GRID_LINE_COLOR = '#ddd';
         canvas.width = GRID_SIZE * BASE_PIXEL_SIZE;
         canvas.height = GRID_SIZE * BASE_PIXEL_SIZE;
         
@@ -99,6 +194,33 @@
         const blueValue = document.getElementById('blue-value');
         const hexDisplay = document.getElementById('hex');
         const zoomLevel = document.getElementById('zoom-level');
+        const signInBtn = document.getElementById('sign-in');
+        const signOutBtn = document.getElementById('sign-out');
+        const userInfo = document.getElementById('user-info');
+        const usernameSpan = document.getElementById('username');
+        const userAvatar = document.getElementById('user-avatar');
+        
+        // Draw grid lines
+        function drawGrid() {
+            ctx.strokeStyle = GRID_LINE_COLOR;
+            ctx.lineWidth = 1;
+            
+            // Vertical lines
+            for (let x = 0; x <= GRID_SIZE; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * BASE_PIXEL_SIZE, 0);
+                ctx.lineTo(x * BASE_PIXEL_SIZE, GRID_SIZE * BASE_PIXEL_SIZE);
+                ctx.stroke();
+            }
+            
+            // Horizontal lines
+            for (let y = 0; y <= GRID_SIZE; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, y * BASE_PIXEL_SIZE);
+                ctx.lineTo(GRID_SIZE * BASE_PIXEL_SIZE, y * BASE_PIXEL_SIZE);
+                ctx.stroke();
+            }
+        }
         
         // Update color from sliders
         function updateColor() {
@@ -132,46 +254,68 @@
         document.getElementById('zoom-in').addEventListener('click', () => setZoom(scale * 1.2));
         document.getElementById('zoom-out').addEventListener('click', () => setZoom(scale / 1.2));
         
-        // Panning
-        container.addEventListener('mousedown', (e) => {
-            if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+        // Handle both mouse and touch events
+        function handleStart(e) {
+            e.preventDefault();
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+            
+            if (e.ctrlKey || e.button === 1) { // Ctrl+click or middle mouse
                 isDragging = true;
-                lastX = e.clientX;
-                lastY = e.clientY;
-                e.preventDefault();
-            } else if (e.button === 0) {
+                lastX = clientX;
+                lastY = clientY;
+            } else {
                 isDrawing = true;
-                drawPixel(e);
+                drawPixel(clientX, clientY);
             }
-        });
+        }
         
-        window.addEventListener('mousemove', (e) => {
+        function handleMove(e) {
+            e.preventDefault();
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+            
             if (isDragging) {
-                const dx = e.clientX - lastX;
-                const dy = e.clientY - lastY;
+                const dx = clientX - lastX;
+                const dy = clientY - lastY;
                 offsetX += dx;
                 offsetY += dy;
-                lastX = e.clientX;
-                lastY = e.clientY;
+                lastX = clientX;
+                lastY = clientY;
                 updateCanvasTransform();
-                e.preventDefault();
             } else if (isDrawing) {
-                drawPixel(e);
+                drawPixel(clientX, clientY);
             }
-        });
+        }
         
-        window.addEventListener('mouseup', () => {
+        function handleEnd() {
             isDragging = false;
             isDrawing = false;
-        });
+        }
         
-        // Draw pixel
-        function drawPixel(e) {
-            if (!auth.currentUser) return;
+        // Add event listeners for both mouse and touch
+        container.addEventListener('mousedown', handleStart);
+        container.addEventListener('touchstart', handleStart);
+        
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('touchmove', handleMove);
+        
+        window.addEventListener('mouseup', handleEnd);
+        window.addEventListener('touchend', handleEnd);
+        
+        // Prevent default touch behavior
+        container.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+        
+        // Draw pixel at coordinates
+        function drawPixel(clientX, clientY) {
+            if (!auth.currentUser) {
+                alert("Please sign in to draw!");
+                return;
+            }
             
             const rect = canvas.getBoundingClientRect();
-            const x = Math.floor((e.clientX - rect.left - offsetX * scale) / (BASE_PIXEL_SIZE * scale));
-            const y = Math.floor((e.clientY - rect.top - offsetY * scale) / (BASE_PIXEL_SIZE * scale));
+            const x = Math.floor((clientX - rect.left - offsetX * scale) / (BASE_PIXEL_SIZE * scale));
+            const y = Math.floor((clientY - rect.top - offsetY * scale) / (BASE_PIXEL_SIZE * scale));
             
             if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
                 db.ref(`pixels/${x}_${y}`).set(currentColor);
@@ -179,47 +323,68 @@
                 // Draw locally for immediate feedback
                 ctx.fillStyle = currentColor;
                 ctx.fillRect(
-                    x * BASE_PIXEL_SIZE, 
-                    y * BASE_PIXEL_SIZE, 
-                    BASE_PIXEL_SIZE, 
-                    BASE_PIXEL_SIZE
+                    x * BASE_PIXEL_SIZE + 1, 
+                    y * BASE_PIXEL_SIZE + 1, 
+                    BASE_PIXEL_SIZE - 2, 
+                    BASE_PIXEL_SIZE - 2
                 );
             }
         }
         
         // Load pixels from Firebase
-        db.ref('pixels').on('child_added', (snapshot) => {
-            const [x, y] = snapshot.key.split('_').map(Number);
-            const color = snapshot.val();
+        function loadPixels() {
+            db.ref('pixels').on('child_added', (snapshot) => {
+                const [x, y] = snapshot.key.split('_').map(Number);
+                const color = snapshot.val();
+                drawPixelOnCanvas(x, y, color);
+            });
+            
+            db.ref('pixels').on('child_changed', (snapshot) => {
+                const [x, y] = snapshot.key.split('_').map(Number);
+                const color = snapshot.val();
+                drawPixelOnCanvas(x, y, color);
+            });
+        }
+        
+        function drawPixelOnCanvas(x, y, color) {
             ctx.fillStyle = color;
             ctx.fillRect(
-                x * BASE_PIXEL_SIZE, 
-                y * BASE_PIXEL_SIZE, 
-                BASE_PIXEL_SIZE, 
-                BASE_PIXEL_SIZE
+                x * BASE_PIXEL_SIZE + 1, 
+                y * BASE_PIXEL_SIZE + 1, 
+                BASE_PIXEL_SIZE - 2, 
+                BASE_PIXEL_SIZE - 2
             );
+        }
+        
+        // Authentication
+        signInBtn.addEventListener('click', () => {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider).catch(error => {
+                console.error("Sign in error:", error);
+            });
         });
         
-        db.ref('pixels').on('child_changed', (snapshot) => {
-            const [x, y] = snapshot.key.split('_').map(Number);
-            const color = snapshot.val();
-            ctx.fillStyle = color;
-            ctx.fillRect(
-                x * BASE_PIXEL_SIZE, 
-                y * BASE_PIXEL_SIZE, 
-                BASE_PIXEL_SIZE, 
-                BASE_PIXEL_SIZE
-            );
+        signOutBtn.addEventListener('click', () => {
+            auth.signOut();
+        });
+        
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                signInBtn.style.display = 'none';
+                userInfo.style.display = 'flex';
+                usernameSpan.textContent = user.displayName || user.email.split('@')[0];
+                userAvatar.src = user.photoURL || 'https://www.gstatic.com/mobilesdk/160503_mobilesdk/auth_service_anonymous.png';
+            } else {
+                signInBtn.style.display = 'block';
+                userInfo.style.display = 'none';
+            }
         });
         
         // Initialize
+        drawGrid();
         updateColor();
         setZoom(1);
-        
-        // Simple auth - just sign in anonymously
-        auth.signInAnonymously().catch(error => {
-            console.error("Authentication error:", error);
-        });
+        loadPixels();
     </script>
 </body>
 </html>
