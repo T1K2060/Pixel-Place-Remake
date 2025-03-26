@@ -1,121 +1,28 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Pixel Place</title>
+    <title>Real-Time Pixel Grid</title>
     <style>
-        body { 
-            margin: 0; 
-            overflow: hidden; 
-            font-family: Arial, sans-serif;
-            touch-action: none;
-        }
-        #container { 
-            position: relative; 
-            width: 100vw; 
-            height: 100vh; 
-            background-color: #f0f0f0;
-            overflow: hidden;
-        }
-        #canvas { 
-            position: absolute; 
-            background: white;
-            image-rendering: pixelated;
-            transform-origin: 0 0;
-        }
+        body { margin: 0; overflow: hidden; font-family: Arial; }
+        #container { position: relative; width: 100vw; height: 100vh; }
+        #canvas { position: absolute; background: #f0f0f0; image-rendering: pixelated; }
         #toolbar {
-            position: fixed; 
-            bottom: 0; 
-            left: 0; 
-            right: 0;
-            height: 120px; 
-            background: #333; 
-            padding: 10px;
-            display: flex; 
-            align-items: center;
-            box-sizing: border-box;
-            z-index: 100;
+            position: fixed; bottom: 0; left: 0; right: 0;
+            height: 100px; background: #333; padding: 10px;
+            display: flex; align-items: center;
         }
-        #color-preview { 
-            width: 60px; 
-            height: 60px; 
-            border: 2px solid white; 
-            margin-right: 15px; 
-            border-radius: 5px;
-        }
-        .slider-container {
-            display: flex;
-            align-items: center;
-            margin-right: 15px;
-            color: white;
-        }
-        .slider { 
-            width: 100px; 
-            margin: 0 10px;
-        }
-        .value { 
-            color: white; 
-            width: 30px; 
-            text-align: center; 
-        }
-        #zoom-controls { 
-            position: fixed; 
-            top: 10px; 
-            right: 10px; 
-            background: rgba(255,255,255,0.8); 
-            padding: 5px 10px;
-            border-radius: 5px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            z-index: 100;
-        }
-        #auth-container {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            background: rgba(255,255,255,0.8);
-            padding: 10px;
-            border-radius: 5px;
-            z-index: 100;
-        }
-        button {
-            padding: 5px 10px;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            background: #4285f4;
-            color: white;
-        }
-        button:hover {
-            opacity: 0.9;
-        }
-        #user-info {
-            display: none;
-            align-items: center;
-            gap: 10px;
-            color: #333;
-        }
-        #user-avatar {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-        }
-        #coords {
-            position: fixed;
-            top: 50px;
-            left: 10px;
-            background: rgba(255,255,255,0.8);
-            padding: 5px 10px;
-            border-radius: 5px;
-            z-index: 100;
-        }
+        #color-preview { width: 50px; height: 50px; border: 2px solid white; margin-right: 15px; }
+        .slider { margin: 0 10px; width: 100px; }
+        .value { color: white; width: 30px; text-align: center; }
+        #zoom-controls { position: fixed; top: 10px; right: 10px; background: rgba(255,255,255,0.7); padding: 5px; }
+        #auth-container { position: fixed; top: 10px; left: 10px; background: rgba(255,255,255,0.7); padding: 10px; }
+        #coords { position: fixed; top: 50px; left: 10px; background: rgba(255,255,255,0.7); padding: 5px; }
     </style>
 </head>
 <body>
     <div id="auth-container">
         <button id="sign-in">Sign In with Google</button>
-        <div id="user-info">
-            <img id="user-avatar" src="" alt="User">
+        <div id="user-info" style="display: none;">
             <span id="username"></span>
             <button id="sign-out">Sign Out</button>
         </div>
@@ -134,26 +41,22 @@
     
     <div id="toolbar">
         <div id="color-preview"></div>
-        
-        <div class="slider-container">
+        <div>
             <span style="color:red">R</span>
             <input type="range" class="slider" id="red" min="0" max="255" value="0">
             <span class="value" id="red-value">0</span>
         </div>
-        
-        <div class="slider-container">
+        <div>
             <span style="color:green">G</span>
             <input type="range" class="slider" id="green" min="0" max="255" value="0">
             <span class="value" id="green-value">0</span>
         </div>
-        
-        <div class="slider-container">
+        <div>
             <span style="color:blue">B</span>
             <input type="range" class="slider" id="blue" min="0" max="255" value="0">
             <span class="value" id="blue-value">0</span>
         </div>
-        
-        <div id="hex" style="color:white; margin-left:15px; font-family: monospace;">#000000</div>
+        <div id="hex" style="color:white; margin-left:15px;">#000000</div>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
@@ -183,11 +86,10 @@
         const container = document.getElementById('container');
         
         // Grid configuration
-        const GRID_SIZE = 100;
-        const BASE_PIXEL_SIZE = 30;
-        const GRID_LINE_COLOR = '#ddd';
-        canvas.width = GRID_SIZE * BASE_PIXEL_SIZE;
-        canvas.height = GRID_SIZE * BASE_PIXEL_SIZE;
+        const GRID_SIZE = 50; // 50x50 grid
+        const PIXEL_SIZE = 20; // Each pixel is 20x20 pixels
+        canvas.width = GRID_SIZE * PIXEL_SIZE;
+        canvas.height = GRID_SIZE * PIXEL_SIZE;
         
         // View state
         let scale = 1;
@@ -198,9 +100,8 @@
         
         // Drawing state
         let currentColor = '#000000';
-        let isDrawing = false;
         
-        // UI elements
+        // Initialize UI
         const colorPreview = document.getElementById('color-preview');
         const redSlider = document.getElementById('red');
         const greenSlider = document.getElementById('green');
@@ -210,34 +111,7 @@
         const blueValue = document.getElementById('blue-value');
         const hexDisplay = document.getElementById('hex');
         const zoomLevel = document.getElementById('zoom-level');
-        const signInBtn = document.getElementById('sign-in');
-        const signOutBtn = document.getElementById('sign-out');
-        const userInfo = document.getElementById('user-info');
-        const usernameSpan = document.getElementById('username');
-        const userAvatar = document.getElementById('user-avatar');
         const coordsDisplay = document.getElementById('coords');
-        
-        // Draw grid lines
-        function drawGrid() {
-            ctx.strokeStyle = GRID_LINE_COLOR;
-            ctx.lineWidth = 1;
-            
-            // Vertical lines
-            for (let x = 0; x <= GRID_SIZE; x++) {
-                ctx.beginPath();
-                ctx.moveTo(x * BASE_PIXEL_SIZE, 0);
-                ctx.lineTo(x * BASE_PIXEL_SIZE, GRID_SIZE * BASE_PIXEL_SIZE);
-                ctx.stroke();
-            }
-            
-            // Horizontal lines
-            for (let y = 0; y <= GRID_SIZE; y++) {
-                ctx.beginPath();
-                ctx.moveTo(0, y * BASE_PIXEL_SIZE);
-                ctx.lineTo(GRID_SIZE * BASE_PIXEL_SIZE, y * BASE_PIXEL_SIZE);
-                ctx.stroke();
-            }
-        }
         
         // Update color from sliders
         function updateColor() {
@@ -261,85 +135,63 @@
         function setZoom(newScale) {
             scale = Math.max(0.1, Math.min(10, newScale));
             zoomLevel.textContent = `${Math.round(scale * 100)}%`;
-            updateCanvasTransform();
-        }
-        
-        function updateCanvasTransform() {
             canvas.style.transform = `scale(${scale}) translate(${offsetX}px, ${offsetY}px)`;
         }
         
         document.getElementById('zoom-in').addEventListener('click', () => setZoom(scale * 1.2));
         document.getElementById('zoom-out').addEventListener('click', () => setZoom(scale / 1.2));
         
-        // Handle both mouse and touch events
-        function handleStart(e) {
-            e.preventDefault();
-            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-            
-            if (!clientX || !clientY) return;
-            
-            if (e.ctrlKey || e.button === 1) { // Ctrl+click or middle mouse
+        // Handle mouse/touch events
+        container.addEventListener('mousedown', (e) => {
+            if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
                 isDragging = true;
-                lastX = clientX;
-                lastY = clientY;
-            } else {
-                isDrawing = true;
-                drawPixel(clientX, clientY);
+                lastX = e.clientX;
+                lastY = e.clientY;
+                e.preventDefault();
+            } else if (e.button === 0) {
+                drawPixel(e.clientX, e.clientY);
             }
-        }
+        });
         
-        function handleMove(e) {
+        container.addEventListener('touchstart', (e) => {
+            drawPixel(e.touches[0].clientX, e.touches[0].clientY);
             e.preventDefault();
-            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-            
-            if (!clientX || !clientY) return;
-            
+        });
+        
+        window.addEventListener('mousemove', (e) => {
             // Update coordinates display
-            updateCoordinatesDisplay(clientX, clientY);
-            
-            if (isDragging) {
-                const dx = clientX - lastX;
-                const dy = clientY - lastY;
-                offsetX += dx;
-                offsetY += dy;
-                lastX = clientX;
-                lastY = clientY;
-                updateCanvasTransform();
-            } else if (isDrawing) {
-                drawPixel(clientX, clientY);
-            }
-        }
-        
-        function handleEnd() {
-            isDragging = false;
-            isDrawing = false;
-        }
-        
-        function updateCoordinatesDisplay(clientX, clientY) {
             const rect = canvas.getBoundingClientRect();
-            const x = Math.floor((clientX - rect.left - offsetX * scale) / (BASE_PIXEL_SIZE * scale));
-            const y = Math.floor((clientY - rect.top - offsetY * scale) / (BASE_PIXEL_SIZE * scale));
+            const x = Math.floor((e.clientX - rect.left - offsetX * scale) / (PIXEL_SIZE * scale));
+            const y = Math.floor((e.clientY - rect.top - offsetY * scale) / (PIXEL_SIZE * scale));
             
             if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
                 coordsDisplay.textContent = `X: ${x}, Y: ${y}`;
             } else {
                 coordsDisplay.textContent = `X: -, Y: -`;
             }
-        }
+            
+            if (isDragging) {
+                const dx = e.clientX - lastX;
+                const dy = e.clientY - lastY;
+                offsetX += dx;
+                offsetY += dy;
+                lastX = e.clientX;
+                lastY = e.clientY;
+                canvas.style.transform = `scale(${scale}) translate(${offsetX}px, ${offsetY}px)`;
+                e.preventDefault();
+            }
+        });
         
-        // Add event listeners for both mouse and touch
-        container.addEventListener('mousedown', handleStart);
-        container.addEventListener('touchstart', handleStart, { passive: false });
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1) {
+                drawPixel(e.touches[0].clientX, e.touches[0].clientY);
+            }
+            e.preventDefault();
+        });
         
-        window.addEventListener('mousemove', handleMove);
-        window.addEventListener('touchmove', handleMove, { passive: false });
+        window.addEventListener('mouseup', () => isDragging = false);
         
-        window.addEventListener('mouseup', handleEnd);
-        window.addEventListener('touchend', handleEnd);
-        
-        // Draw pixel at coordinates
+        // Draw pixel at screen coordinates
         function drawPixel(clientX, clientY) {
             if (!auth.currentUser) {
                 alert("Please sign in to draw!");
@@ -347,73 +199,83 @@
             }
             
             const rect = canvas.getBoundingClientRect();
-            const x = Math.floor((clientX - rect.left - offsetX * scale) / (BASE_PIXEL_SIZE * scale));
-            const y = Math.floor((clientY - rect.top - offsetY * scale) / (BASE_PIXEL_SIZE * scale));
+            const x = Math.floor((clientX - rect.left - offsetX * scale) / (PIXEL_SIZE * scale));
+            const y = Math.floor((clientY - rect.top - offsetY * scale) / (PIXEL_SIZE * scale));
             
             if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
-                // Save to Firebase
+                // Save to Firebase in "x_y" format with hex color
                 db.ref(`pixels/${x}_${y}`).set(currentColor);
                 
                 // Draw locally for immediate feedback
-                drawPixelOnCanvas(x, y, currentColor);
+                ctx.fillStyle = currentColor;
+                ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
             }
         }
         
-        function drawPixelOnCanvas(x, y, color) {
-            ctx.fillStyle = color;
-            ctx.fillRect(
-                x * BASE_PIXEL_SIZE + 1, 
-                y * BASE_PIXEL_SIZE + 1, 
-                BASE_PIXEL_SIZE - 2, 
-                BASE_PIXEL_SIZE - 2
-            );
-        }
-        
-        // Load all pixels from Firebase
-        function loadAllPixels() {
+        // Load and render all pixels from Firebase
+        function loadAndRenderPixels() {
+            // Clear canvas
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw grid lines
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                // Vertical lines
+                ctx.beginPath();
+                ctx.moveTo(i * PIXEL_SIZE, 0);
+                ctx.lineTo(i * PIXEL_SIZE, GRID_SIZE * PIXEL_SIZE);
+                ctx.stroke();
+                
+                // Horizontal lines
+                ctx.beginPath();
+                ctx.moveTo(0, i * PIXEL_SIZE);
+                ctx.lineTo(GRID_SIZE * PIXEL_SIZE, i * PIXEL_SIZE);
+                ctx.stroke();
+            }
+            
+            // Load all existing pixels
             db.ref('pixels').once('value').then((snapshot) => {
                 const pixels = snapshot.val();
                 if (pixels) {
                     Object.keys(pixels).forEach(key => {
                         const [x, y] = key.split('_').map(Number);
-                        drawPixelOnCanvas(x, y, pixels[key]);
+                        ctx.fillStyle = pixels[key];
+                        ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
                     });
                 }
             });
-        }
-        
-        // Set up real-time updates
-        function setupRealtimeUpdates() {
+            
+            // Set up real-time listeners
             db.ref('pixels').on('child_added', (snapshot) => {
                 const [x, y] = snapshot.key.split('_').map(Number);
-                drawPixelOnCanvas(x, y, snapshot.val());
+                ctx.fillStyle = snapshot.val();
+                ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
             });
             
             db.ref('pixels').on('child_changed', (snapshot) => {
                 const [x, y] = snapshot.key.split('_').map(Number);
-                drawPixelOnCanvas(x, y, snapshot.val());
+                ctx.fillStyle = snapshot.val();
+                ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
             });
         }
         
         // Authentication
         signInBtn.addEventListener('click', () => {
             const provider = new firebase.auth.GoogleAuthProvider();
-            auth.signInWithPopup(provider).catch(error => {
-                console.error("Sign in error:", error);
-                alert("Sign in failed: " + error.message);
-            });
+            auth.signInWithPopup(provider);
         });
         
-        signOutBtn.addEventListener('click', () => {
+        document.getElementById('sign-out').addEventListener('click', () => {
             auth.signOut();
         });
         
         auth.onAuthStateChanged((user) => {
             if (user) {
                 signInBtn.style.display = 'none';
-                userInfo.style.display = 'flex';
-                usernameSpan.textContent = user.displayName || user.email.split('@')[0];
-                userAvatar.src = user.photoURL || 'https://www.gstatic.com/mobilesdk/160503_mobilesdk/auth_service_anonymous.png';
+                userInfo.style.display = 'block';
+                document.getElementById('username').textContent = user.displayName || user.email;
             } else {
                 signInBtn.style.display = 'block';
                 userInfo.style.display = 'none';
@@ -421,16 +283,9 @@
         });
         
         // Initialize
-        drawGrid();
         updateColor();
         setZoom(1);
-        loadAllPixels();
-        setupRealtimeUpdates();
-        
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            updateCanvasTransform();
-        });
+        loadAndRenderPixels();
     </script>
 </body>
 </html>
