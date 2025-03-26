@@ -7,17 +7,20 @@
             margin: 0; 
             overflow: hidden; 
             font-family: Arial, sans-serif;
+            touch-action: none;
         }
         #container { 
             position: relative; 
             width: 100vw; 
             height: 100vh; 
             background-color: #f0f0f0;
+            overflow: hidden;
         }
         #canvas { 
             position: absolute; 
             background: white;
             image-rendering: pixelated;
+            transform-origin: 0 0;
         }
         #toolbar {
             position: fixed; 
@@ -30,6 +33,7 @@
             display: flex; 
             align-items: center;
             box-sizing: border-box;
+            z-index: 100;
         }
         #color-preview { 
             width: 60px; 
@@ -63,6 +67,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            z-index: 100;
         }
         #auth-container {
             position: fixed;
@@ -95,6 +100,15 @@
             height: 30px;
             border-radius: 50%;
         }
+        #coords {
+            position: fixed;
+            top: 50px;
+            left: 10px;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
     </style>
 </head>
 <body>
@@ -106,6 +120,8 @@
             <button id="sign-out">Sign Out</button>
         </div>
     </div>
+    
+    <div id="coords">X: 0, Y: 0</div>
     
     <div id="container">
         <canvas id="canvas"></canvas>
@@ -199,6 +215,7 @@
         const userInfo = document.getElementById('user-info');
         const usernameSpan = document.getElementById('username');
         const userAvatar = document.getElementById('user-avatar');
+        const coordsDisplay = document.getElementById('coords');
         
         // Draw grid lines
         function drawGrid() {
@@ -257,8 +274,10 @@
         // Handle both mouse and touch events
         function handleStart(e) {
             e.preventDefault();
-            const clientX = e.clientX || e.touches[0].clientX;
-            const clientY = e.clientY || e.touches[0].clientY;
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            if (!clientX || !clientY) return;
             
             if (e.ctrlKey || e.button === 1) { // Ctrl+click or middle mouse
                 isDragging = true;
@@ -272,8 +291,13 @@
         
         function handleMove(e) {
             e.preventDefault();
-            const clientX = e.clientX || e.touches[0].clientX;
-            const clientY = e.clientY || e.touches[0].clientY;
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            if (!clientX || !clientY) return;
+            
+            // Update coordinates display
+            updateCoordinatesDisplay(clientX, clientY);
             
             if (isDragging) {
                 const dx = clientX - lastX;
@@ -293,18 +317,27 @@
             isDrawing = false;
         }
         
+        function updateCoordinatesDisplay(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((clientX - rect.left - offsetX * scale) / (BASE_PIXEL_SIZE * scale));
+            const y = Math.floor((clientY - rect.top - offsetY * scale) / (BASE_PIXEL_SIZE * scale));
+            
+            if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                coordsDisplay.textContent = `X: ${x}, Y: ${y}`;
+            } else {
+                coordsDisplay.textContent = `X: -, Y: -`;
+            }
+        }
+        
         // Add event listeners for both mouse and touch
         container.addEventListener('mousedown', handleStart);
-        container.addEventListener('touchstart', handleStart);
+        container.addEventListener('touchstart', handleStart, { passive: false });
         
         window.addEventListener('mousemove', handleMove);
-        window.addEventListener('touchmove', handleMove);
+        window.addEventListener('touchmove', handleMove, { passive: false });
         
         window.addEventListener('mouseup', handleEnd);
         window.addEventListener('touchend', handleEnd);
-        
-        // Prevent default touch behavior
-        container.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
         
         // Draw pixel at coordinates
         function drawPixel(clientX, clientY) {
@@ -318,32 +351,12 @@
             const y = Math.floor((clientY - rect.top - offsetY * scale) / (BASE_PIXEL_SIZE * scale));
             
             if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                // Save to Firebase
                 db.ref(`pixels/${x}_${y}`).set(currentColor);
                 
                 // Draw locally for immediate feedback
-                ctx.fillStyle = currentColor;
-                ctx.fillRect(
-                    x * BASE_PIXEL_SIZE + 1, 
-                    y * BASE_PIXEL_SIZE + 1, 
-                    BASE_PIXEL_SIZE - 2, 
-                    BASE_PIXEL_SIZE - 2
-                );
+                drawPixelOnCanvas(x, y, currentColor);
             }
-        }
-        
-        // Load pixels from Firebase
-        function loadPixels() {
-            db.ref('pixels').on('child_added', (snapshot) => {
-                const [x, y] = snapshot.key.split('_').map(Number);
-                const color = snapshot.val();
-                drawPixelOnCanvas(x, y, color);
-            });
-            
-            db.ref('pixels').on('child_changed', (snapshot) => {
-                const [x, y] = snapshot.key.split('_').map(Number);
-                const color = snapshot.val();
-                drawPixelOnCanvas(x, y, color);
-            });
         }
         
         function drawPixelOnCanvas(x, y, color) {
@@ -356,11 +369,38 @@
             );
         }
         
+        // Load all pixels from Firebase
+        function loadAllPixels() {
+            db.ref('pixels').once('value').then((snapshot) => {
+                const pixels = snapshot.val();
+                if (pixels) {
+                    Object.keys(pixels).forEach(key => {
+                        const [x, y] = key.split('_').map(Number);
+                        drawPixelOnCanvas(x, y, pixels[key]);
+                    });
+                }
+            });
+        }
+        
+        // Set up real-time updates
+        function setupRealtimeUpdates() {
+            db.ref('pixels').on('child_added', (snapshot) => {
+                const [x, y] = snapshot.key.split('_').map(Number);
+                drawPixelOnCanvas(x, y, snapshot.val());
+            });
+            
+            db.ref('pixels').on('child_changed', (snapshot) => {
+                const [x, y] = snapshot.key.split('_').map(Number);
+                drawPixelOnCanvas(x, y, snapshot.val());
+            });
+        }
+        
         // Authentication
         signInBtn.addEventListener('click', () => {
             const provider = new firebase.auth.GoogleAuthProvider();
             auth.signInWithPopup(provider).catch(error => {
                 console.error("Sign in error:", error);
+                alert("Sign in failed: " + error.message);
             });
         });
         
@@ -384,7 +424,13 @@
         drawGrid();
         updateColor();
         setZoom(1);
-        loadPixels();
+        loadAllPixels();
+        setupRealtimeUpdates();
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            updateCanvasTransform();
+        });
     </script>
 </body>
 </html>
