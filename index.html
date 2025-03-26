@@ -1,0 +1,315 @@
+// Initialize Firebase
+const firebaseConfig = {
+    apiKey: "AIzaSyDn5odm1PQYXKC9tk_ad_3sPddQf9cEEmY",
+    authDomain: "pixel-place-1.firebaseapp.com",
+    databaseURL: "https://pixel-place-1-default-rtdb.firebaseio.com",
+    projectId: "pixel-place-1",
+    storageBucket: "pixel-place-1.appspot.com",
+    messagingSenderId: "48366213367",
+    appId: "1:48366213367:web:0a8bab14f054ddcf6a5bf2",
+    measurementId: "G-KFPY6HFNDK"
+};
+
+const app = firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+const auth = firebase.auth();
+
+// Canvas setup
+const canvas = document.getElementById('grid');
+const ctx = canvas.getContext('2d');
+const canvasContainer = document.getElementById('canvas-container');
+
+// Grid dimensions
+const GRID_SIZE = 10000;
+const PIXEL_SIZE = 10; // Base pixel size (will change with zoom)
+canvas.width = GRID_SIZE * PIXEL_SIZE;
+canvas.height = GRID_SIZE * PIXEL_SIZE;
+
+// View state
+let viewState = {
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+    isDragging: false,
+    lastX: 0,
+    lastY: 0
+};
+
+// Drawing state
+let currentColor = '#000000';
+let isDrawing = false;
+
+// Initialize UI
+const colorPreview = document.getElementById('color-preview');
+const redSlider = document.getElementById('red-slider');
+const greenSlider = document.getElementById('green-slider');
+const blueSlider = document.getElementById('blue-slider');
+const redValue = document.getElementById('red-value');
+const greenValue = document.getElementById('green-value');
+const blueValue = document.getElementById('blue-value');
+const colorHex = document.getElementById('color-hex');
+const zoomLevel = document.getElementById('zoom-level');
+const zoomInBtn = document.getElementById('zoom-in');
+const zoomOutBtn = document.getElementById('zoom-out');
+const currentCoords = document.getElementById('current-coords');
+const signInBtn = document.getElementById('sign-in');
+const signOutBtn = document.getElementById('sign-out');
+const userInfo = document.getElementById('user-info');
+const usernameSpan = document.getElementById('username');
+
+// Preset colors
+const presetColors = [
+    '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF',
+    '#FFFFFF', '#000000', '#C0C0C0', '#808080', '#800000', '#808000',
+    '#008000', '#800080', '#008080', '#000080'
+];
+
+// Create preset color buttons
+const presetColorsContainer = document.getElementById('preset-colors');
+presetColors.forEach(color => {
+    const btn = document.createElement('button');
+    btn.style.backgroundColor = color;
+    btn.style.width = '30px';
+    btn.style.height = '30px';
+    btn.style.border = '2px solid #fff';
+    btn.style.cursor = 'pointer';
+    btn.title = color;
+    
+    btn.addEventListener('click', () => {
+        currentColor = color;
+        updateColorPreview();
+        updateSlidersFromColor();
+    });
+    
+    presetColorsContainer.appendChild(btn);
+});
+
+// Update color preview
+function updateColorPreview() {
+    colorPreview.style.backgroundColor = currentColor;
+    colorHex.textContent = currentColor;
+}
+
+// Update sliders from color
+function updateSlidersFromColor() {
+    if (currentColor.length === 7) {
+        const r = parseInt(currentColor.substr(1, 2), 16);
+        const g = parseInt(currentColor.substr(3, 2), 16);
+        const b = parseInt(currentColor.substr(5, 2), 16);
+        
+        redSlider.value = r;
+        greenSlider.value = g;
+        blueSlider.value = b;
+        
+        redValue.textContent = r;
+        greenValue.textContent = g;
+        blueValue.textContent = b;
+    }
+}
+
+// Update color from sliders
+function updateColorFromSliders() {
+    const r = parseInt(redSlider.value).toString(16).padStart(2, '0');
+    const g = parseInt(greenSlider.value).toString(16).padStart(2, '0');
+    const b = parseInt(blueSlider.value).toString(16).padStart(2, '0');
+    
+    currentColor = `#${r}${g}${b}`.toUpperCase();
+    updateColorPreview();
+}
+
+// Event listeners for sliders
+redSlider.addEventListener('input', () => {
+    redValue.textContent = redSlider.value;
+    updateColorFromSliders();
+});
+
+greenSlider.addEventListener('input', () => {
+    greenValue.textContent = greenSlider.value;
+    updateColorFromSliders();
+});
+
+blueSlider.addEventListener('input', () => {
+    blueValue.textContent = blueSlider.value;
+    updateColorFromSliders();
+});
+
+// Initialize color
+updateColorPreview();
+
+// Zoom functionality
+function updateZoom() {
+    canvas.style.transform = `scale(${viewState.scale}) translate(${viewState.offsetX / viewState.scale}px, ${viewState.offsetY / viewState.scale}px)`;
+    zoomLevel.textContent = `${Math.round(viewState.scale * 100)}%`;
+}
+
+zoomInBtn.addEventListener('click', () => {
+    viewState.scale *= 1.2;
+    updateZoom();
+});
+
+zoomOutBtn.addEventListener('click', () => {
+    viewState.scale /= 1.2;
+    updateZoom();
+});
+
+// Pan functionality
+canvasContainer.addEventListener('mousedown', (e) => {
+    if (e.button === 1 || (e.button === 0 && e.ctrlKey)) { // Middle mouse or Ctrl+Left
+        viewState.isDragging = true;
+        viewState.lastX = e.clientX;
+        viewState.lastY = e.clientY;
+        e.preventDefault();
+    } else if (e.button === 0) { // Left mouse
+        isDrawing = true;
+        drawPixel(e);
+    }
+});
+
+window.addEventListener('mousemove', (e) => {
+    // Update coordinates display
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left - viewState.offsetX) / (PIXEL_SIZE * viewState.scale));
+    const y = Math.floor((e.clientY - rect.top - viewState.offsetY) / (PIXEL_SIZE * viewState.scale));
+    
+    if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+        currentCoords.textContent = `X: ${x}, Y: ${y}`;
+    } else {
+        currentCoords.textContent = `X: -, Y: -`;
+    }
+    
+    if (viewState.isDragging) {
+        const dx = e.clientX - viewState.lastX;
+        const dy = e.clientY - viewState.lastY;
+        
+        viewState.offsetX += dx;
+        viewState.offsetY += dy;
+        
+        viewState.lastX = e.clientX;
+        viewState.lastY = e.clientY;
+        
+        updateZoom();
+        e.preventDefault();
+    } else if (isDrawing) {
+        drawPixel(e);
+    }
+});
+
+window.addEventListener('mouseup', (e) => {
+    if (e.button === 1 || e.button === 0) {
+        viewState.isDragging = false;
+        isDrawing = false;
+    }
+});
+
+// Prevent default for middle mouse button
+window.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+});
+
+// Handle wheel event for zooming
+canvasContainer.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    
+    // Get mouse position relative to canvas
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    // Calculate the position before zoom
+    const worldX = (mouseX - viewState.offsetX) / viewState.scale;
+    const worldY = (mouseY - viewState.offsetY) / viewState.scale;
+    
+    // Apply zoom
+    if (e.deltaY < 0) {
+        viewState.scale *= 1.1;
+    } else {
+        viewState.scale /= 1.1;
+    }
+    
+    // Limit zoom
+    viewState.scale = Math.min(Math.max(0.1, viewState.scale), 20);
+    
+    // Calculate new offset to zoom toward mouse position
+    viewState.offsetX = mouseX - worldX * viewState.scale;
+    viewState.offsetY = mouseY - worldY * viewState.scale;
+    
+    updateZoom();
+});
+
+// Draw a pixel at mouse position
+function drawPixel(e) {
+    if (!auth.currentUser) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left - viewState.offsetX) / (PIXEL_SIZE * viewState.scale));
+    const y = Math.floor((e.clientY - rect.top - viewState.offsetY) / (PIXEL_SIZE * viewState.scale));
+    
+    if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+        // Update Firebase
+        const pixelRef = database.ref(`pixels/${x}_${y}`);
+        pixelRef.set(currentColor);
+    }
+}
+
+// Render the grid from Firebase data
+function renderGrid() {
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Get visible area to optimize rendering
+    const visibleX1 = Math.max(0, Math.floor(-viewState.offsetX / (PIXEL_SIZE * viewState.scale)));
+    const visibleY1 = Math.max(0, Math.floor(-viewState.offsetY / (PIXEL_SIZE * viewState.scale)));
+    const visibleX2 = Math.min(GRID_SIZE, Math.ceil((canvasContainer.clientWidth - viewState.offsetX) / (PIXEL_SIZE * viewState.scale)));
+    const visibleY2 = Math.min(GRID_SIZE, Math.ceil((canvasContainer.clientHeight - viewState.offsetY) / (PIXEL_SIZE * viewState.scale)));
+    
+    // Listen for pixel changes in the visible area
+    const visiblePixelsRef = database.ref('pixels');
+    
+    visiblePixelsRef.on('child_added', (snapshot) => {
+        const [x, y] = snapshot.key.split('_').map(Number);
+        if (x >= visibleX1 && x <= visibleX2 && y >= visibleY1 && y <= visibleY2) {
+            const color = snapshot.val();
+            ctx.fillStyle = color;
+            ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+        }
+    });
+    
+    visiblePixelsRef.on('child_changed', (snapshot) => {
+        const [x, y] = snapshot.key.split('_').map(Number);
+        if (x >= visibleX1 && x <= visibleX2 && y >= visibleY1 && y <= visibleY2) {
+            const color = snapshot.val();
+            ctx.fillStyle = color;
+            ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+        }
+    });
+}
+
+// Authentication
+signInBtn.addEventListener('click', () => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider);
+});
+
+signOutBtn.addEventListener('click', () => {
+    auth.signOut();
+});
+
+auth.onAuthStateChanged((user) => {
+    if (user) {
+        signInBtn.style.display = 'none';
+        userInfo.style.display = 'block';
+        usernameSpan.textContent = user.displayName || user.email;
+    } else {
+        signInBtn.style.display = 'block';
+        userInfo.style.display = 'none';
+    }
+});
+
+// Initialize
+updateZoom();
+renderGrid();
+
+// Periodically update visible area as user pans/zooms
+setInterval(() => {
+    renderGrid();
+}, 1000);
